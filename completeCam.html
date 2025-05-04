@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QR Code Scanner with Camera Selector, No Mirror, and Beep</title>
+    <!-- Bootstrap CSS for layout and styling -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <style>
+        /* Container styling for the QR scanner preview */
+        #reader {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: #000;
+        }
+
+        /* Flip the video and canvas horizontally */
+        #reader video,
+        #reader canvas {
+            transform: scaleX(-1) !important;
+            /* Flip horizontally */
+        }
+
+        /* Styling for the result textbox */
+        #result-box {
+            width: 100%;
+            max-width: 400px;
+            height: 100px;
+            margin: 20px auto 0;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            resize: none;
+        }
+
+        /* Styling for the camera select dropdown */
+        #cameraSelect {
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto;
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container my-5">
+        <h1 class="text-center mb-4">QR Code Scanner</h1>
+        <!-- Dropdown for camera selection -->
+        <select id="cameraSelect" class="form-select">
+            <option value="">Select Camera</option>
+        </select>
+        <!-- Container for the QR code reader preview -->
+        <div id="reader"></div>
+        <!-- Textbox to display the scanned QR code result -->
+        <textarea id="result-box" class="form-control" placeholder="Scan result will appear here..." readonly></textarea>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            // Ensure the html5-qrcode library is loaded.
+            if (typeof Html5Qrcode === "undefined") {
+                console.error("Html5Qrcode is not defined. Please check the CDN URL or your network connection.");
+                alert("Error: QR Code library failed to load.");
+                return;
+            }
+
+            const resultBox = document.getElementById("result-box");
+            const cameraSelect = document.getElementById("cameraSelect");
+
+            // Function to play beep sound
+            function playBeep() {
+                // Create audio context
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                // Create oscillator
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                // Connect nodes
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+                // Configure sound
+                oscillator.type = 'sine'; // Type of waveform
+                oscillator.frequency.value = 800; // Frequency in Hz
+                gainNode.gain.value = 0.1; // Volume
+                // Play sound
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.2); // Duration in seconds
+            }
+
+            // Create an instance of the scanner targeting the "reader" element.
+            const html5QrCode = new Html5Qrcode("reader");
+            let currentCameraConfig = null;
+
+            // Callback executed when a QR code is successfully scanned.
+            function onScanSuccess(decodedText, decodedResult) {
+                if (decodedText && decodedText !== resultBox.value) {
+                    resultBox.value = decodedText;
+                    console.log("QR Code detected:", decodedText);
+                    playBeep(); // Call playBeep when the result box value is not empty and changed
+                }
+            }
+
+            // Scanner configuration: 10 fps and a 250px scanning box.
+            const config = {
+                fps: 10,
+                qrbox: 250
+            };
+
+            // Function to start scanning with a given camera configuration.
+            // The cameraConfig parameter can be a valid camera ID (string) or a configuration object.
+            function startScanning(cameraConfig) {
+                // If no valid camera ID is provided, fall back to use the environment (back) camera.
+                if (!cameraConfig) {
+                    cameraConfig = {
+                        facingMode: "environment"
+                    };
+                }
+
+                // Stop current scanning if already running.
+const stopPromise = currentCameraConfig ? html5QrCode.stop() : Promise.resolve();
+                stopPromise.then(() => {html5QrCode.start(cameraConfig, config, onScanSuccess)
+                    .then(() => {
+                        currentCameraConfig = cameraConfig;
+                        console.log("Started scanning with camera config:", cameraConfig);
+                    })
+                    .catch(err => {
+                        console.error("Error starting QR scanner with camera config:", cameraConfig, err);
+                        alert("Error initializing camera: " + err);
+                    });
+            }).catch(err => {
+                console.error("Error stopping previous scan:", err);
+            });
+        }
+
+        // Populate the camera selector with available cameras.
+        Html5Qrcode.getCameras().then(cameras => {
+            if (cameras && cameras.length) {
+                cameras.forEach(camera => {
+                    const option = document.createElement("option");
+                    // Some camera objects might have an empty id; if so, the value remains an empty string.
+                    option.value = camera.id ? camera.id : "";
+                    option.text = camera.label ? camera.label : "Camera " + (cameraSelect.options.length);
+                    cameraSelect.appendChild(option);
+                });
+
+                // Auto-select:
+                // If the selected option's value is empty, try selecting the first option with a valid id.
+                if (!cameraSelect.value) {
+                    let foundCamera = false;
+                    for (let i = 0; i < cameraSelect.options.length; i++) {
+                        if (cameraSelect.options[i].value !== "") {
+                            cameraSelect.selectedIndex = i;
+                            foundCamera = true;
+                            break;
+                        }
+                    }
+                    if (!foundCamera) {
+                        // No valid camera ID available? Fallback to using facingMode configuration.
+                        startScanning({ facingMode: "environment" });
+                    } else {
+                        startScanning(cameraSelect.value);
+                    }
+                } else {
+                    startScanning(cameraSelect.value);
+                }
+            } else {
+                console.error("No cameras found.");
+                alert("No cameras found. Please connect a webcam.");
+            }
+        }).catch(err => {
+            console.error("Error getting cameras:", err);
+            alert("Error: " + err);
+        });
+
+        // Listen for changes on the dropdown to restart scanning with the selected camera.
+        cameraSelect.addEventListener("change", function (e) {
+            const selectedCameraId = e.target.value;
+            // If the value is not valid, use fallback config.
+            if (selectedCameraId) {
+                startScanning(selectedCameraId);
+            } else {
+                startScanning({ facingMode: "environment" });
+            }
+        });
+    });
+</script>
+
+<!-- html5-qrcode Library from jsDelivr -->
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+
+<!-- Bootstrap Bundle with Popper for interactive components (optional) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
