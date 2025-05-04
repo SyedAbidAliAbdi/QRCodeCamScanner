@@ -1,4 +1,4 @@
-# Q R Code WebCam Scanner
+# QR Code WebCam Scanner
 A HTML-5 based webpage that can Scan QR Code witht the help of Html5Qrcode library. 
 Through webcam it scan QR Code and if it sucess on it then plased QR Code value into Text are with beep sound.
 this project can help you on attandence system, security gate, and many more projects...
